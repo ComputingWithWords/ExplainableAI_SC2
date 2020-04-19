@@ -5,10 +5,7 @@
 
 # ## Fuzzy controler
 
-# In[27]:
 
-
-get_ipython().run_line_magic('matplotlib', 'inline')
 import skfuzzy as fuzz
 import numpy as np
 from skfuzzy import control as ctrl
