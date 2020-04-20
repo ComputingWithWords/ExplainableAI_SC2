@@ -5,22 +5,26 @@
 
 # ## Fuzzy controler
 
+# In[1]:
 
+
+get_ipython().run_line_magic('matplotlib', 'inline')
 import skfuzzy as fuzz
 import numpy as np
 from skfuzzy import control as ctrl
 
 distance = ctrl.Antecedent(np.arange(0,55,5), 'distance')
 life = ctrl.Antecedent(np.arange(0,85,5), 'life')
-action = ctrl.Consequent(np.arange(0,2,1), 'action')
-action['run'] = fuzz.trimf(action.universe, [0,0,0])
-action['attack'] = fuzz.trimf(action.universe, [1,1,1])
+action = ctrl.Consequent(np.arange(0,3,1), 'action')
+action['blink'] = fuzz.trimf(action.universe, [0,0,0])
+action['run'] = fuzz.trimf(action.universe, [1,1,1])
+action['attack'] = fuzz.trimf(action.universe, [2,2,2])
 
 distance.automf(3)
 life.automf(3)
 
 
-# In[18]:
+# In[2]:
 
 
 distance.view()
@@ -49,10 +53,10 @@ life.view()
 # 
 # Rule 9 : if life is good and distance is good then attack
 
-# In[30]:
+# In[3]:
 
 
-rule1 = ctrl.Rule(life['poor'] & distance['poor'], action['run'])
+rule1 = ctrl.Rule(life['poor'] & distance['poor'], action['blink'])
 rule2 = ctrl.Rule(life['poor'] & distance['average'], action['run'])
 rule3 = ctrl.Rule(life['poor'] & distance['good'], action['attack'])
 rule4 = ctrl.Rule(life['average'] & distance['poor'], action['run'])
@@ -63,7 +67,7 @@ rule8 = ctrl.Rule(life['good'] & distance['average'], action['attack'])
 rule9 = ctrl.Rule(life['good'] & distance['good'], action['attack'])
 
 
-# In[39]:
+# In[4]:
 
 
 rule1.view()
@@ -71,23 +75,23 @@ rule1.view()
 
 # ## Control system creation and simulation
 
-# In[40]:
+# In[5]:
 
 
 action_ctrl = ctrl.ControlSystem([rule1, rule2, rule3, rule4, rule5, rule6, rule7, rule8, rule9])
 
 
-# In[41]:
+# In[6]:
 
 
 action_simulation = ctrl.ControlSystemSimulation(action_ctrl)
 
 
-# In[47]:
+# In[7]:
 
 
-action_simulation.input['life'] = 73
-action_simulation.input['distance'] = 23.4
+action_simulation.input['life'] = 10
+action_simulation.input['distance'] = 5
 
 action_simulation.compute()
 print(action_simulation.output['action'])
@@ -96,11 +100,11 @@ action.view(sim=action_simulation)
 
 # With life = 73 and distance = 23.4, the fuzzy controler tells us to attack
 
-# In[48]:
+# In[8]:
 
 
 action_simulation.input['life'] = 20
-action_simulation.input['distance'] = 23.4
+action_simulation.input['distance'] = 100
 
 action_simulation.compute()
 print(action_simulation.output['action'])
