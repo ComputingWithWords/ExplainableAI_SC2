@@ -49,6 +49,12 @@ _PLAYER_ENEMY = features.PlayerRelative.ENEMY
 MAX_COORD = 84
 MIN_COORD = 0
 
+TOP_LEFT =[MIN_COORD,MIN_COORD]
+TOP_RIGHT=[MAX_COORD,MIN_COORD]
+BOTTOM_LEFT=[MIN_COORD,MAX_COORD]
+BOTTOM_RIGHT=[MAX_COORD,MAX_COORD]
+CORNERS = [TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT]
+
 _PLAYER_HOSTILE = 4
 
 _PLAYER_RELATIVE = features.SCREEN_FEATURES.player_relative.index
@@ -96,12 +102,12 @@ def attack(obs) :
         return FUNCTIONS.Attack_screen("now", target)
 
 # TODO : implement "smart" run
-def run(mean_stalker_x,mean_stalker_y, mean_zealot_x, mean_zealot_y) :
-    target_x = verify_coord(2*mean_stalker_x - mean_zealot_x)
-    target_y = verify_coord(2*mean_stalker_y - mean_zealot_y)
+#def run(mean_stalker_x,mean_stalker_y, mean_zealot_x, mean_zealot_y) :
+    #target_x = verify_coord(2*mean_stalker_x - mean_zealot_x)
+    #target_y = verify_coord(2*mean_stalker_y - mean_zealot_y)
 
-    target = [target_x, target_y]
-    return actions.FUNCTIONS.Move_screen("now", target)
+    #target = [target_x, target_y]
+    #return actions.FUNCTIONS.Move_screen("now", target)
 
 
 def unit_type_is_selected(obs, unit_type):
@@ -121,10 +127,14 @@ def select_all_stalkers(stalkers):
     return actions.FUNCTIONS.select_point("select_all_type", (stalker.x,stalker.y))
 
 
+
+
 class DefeatZealotAgentRunaway(base_agent.BaseAgent):
+
     def __init__(self):
         super(DefeatZealotAgentRunaway, self).__init__()
-
+        
+        self.current_target = None
         self.current_action = None
         self.action_ctrl = ctrl.ControlSystem([rule1, rule2, rule3, rule4, rule5, rule6, rule7, rule8, rule9])
         self.action_simulation = ctrl.ControlSystemSimulation(self.action_ctrl)
@@ -138,6 +148,69 @@ class DefeatZealotAgentRunaway(base_agent.BaseAgent):
 
 
         return string_action(score)
+    
+    def run(self, stalkerX, stalkerY, zealotX, zealotY):
+        # Stalker in top left corner
+        if(stalkerX<=(MAX_COORD/4) and stalkerY<=(MAX_COORD/4)):
+            print("enter top left")
+            available_corners = [BOTTOM_LEFT, TOP_RIGHT]
+            distances = [math.sqrt(math.pow(zealotX-corner[0],2) 
+                        + math.pow(zealotY-corner[1],2))
+                        for corner in available_corners]
+            target = available_corners[np.argmax(np.array(distances))]
+            self.current_target = target
+        # Stalker in top right corner
+        elif(stalkerX>=((MAX_COORD/4)*3) and stalkerY<=(MAX_COORD/4)):
+            print("enter top right")
+            available_corners = [TOP_LEFT, BOTTOM_RIGHT]
+            distances = [math.sqrt(math.pow(zealotX-corner[0],2) 
+                        + math.pow(zealotY-corner[1],2))
+                        for corner in available_corners]
+            target = available_corners[np.argmax(np.array(distances))]
+            self.current_target = target
+        # Stalker in bottom left corner
+        elif(stalkerX<=(MAX_COORD/4) and stalkerY>=((MAX_COORD/4)*3)):
+            print("enter bottom left")
+            available_corners = [TOP_LEFT, BOTTOM_RIGHT]
+            distances = [math.sqrt(math.pow(zealotX-corner[0],2) 
+                        + math.pow(zealotY-corner[1],2))
+                        for corner in available_corners]
+            target = available_corners[np.argmax(np.array(distances))]
+            self.current_target = target
+        # Stalker in bottom right corner
+        elif(stalkerX>=((MAX_COORD/4)*3) and stalkerY>=((MAX_COORD/4)*3)):
+            print("enter bottom right")
+            available_corners = [BOTTOM_LEFT, TOP_RIGHT]
+            distances = [math.sqrt(math.pow(zealotX-corner[0],2) 
+                        + math.pow(zealotY-corner[1],2))
+                        for corner in available_corners]
+            target = available_corners[np.argmax(np.array(distances))]
+            self.current_target = target
+        # Stalker not in a corner
+        elif self.current_target is None:
+            distances = [math.sqrt(math.pow(stalkerX-corner[0],2) 
+                        + math.pow(stalkerY-corner[1],2))
+                        for corner in CORNERS]
+            # select the two nearest corners
+            idx_target1 = np.argmin(np.array(distances))
+            copyDistances = list(distances)
+            copyCorners = list(CORNERS)
+            del copyCorners[idx_target1]
+            del copyDistances[idx_target1]
+            idx_target2 = np.argmin(np.array(copyDistances))
+            # choose the one which is the most far away from the zealots
+            target1 = CORNERS[idx_target1]
+            target2 = copyCorners[idx_target2]
+            targets = [target1,target2]
+            zealots_dist = [math.sqrt(math.pow(zealotX-corner[0],2) 
+                            + math.pow(zealotY-corner[1],2))
+                            for corner in targets]
+            target = targets[np.argmax(np.array(zealots_dist))]
+            self.current_target = target
+        else:
+            target = self.current_target
+        print(target)
+        return actions.FUNCTIONS.Move_screen("now", target)
 
     def step(self, obs):
         super(DefeatZealotAgentRunaway, self).step(obs)
@@ -163,7 +236,8 @@ class DefeatZealotAgentRunaway(base_agent.BaseAgent):
             # Move each stalker individually ?
             for s in stalkers:
                 avg_health += (s.shield + s.health)
-            avg_health /= len(stalkers)
+            if len(stalkers) != 0:
+                avg_health /= len(stalkers)
 
             self.current_action = self.take_decision(life=avg_health, distance=distance)
 
@@ -178,12 +252,12 @@ class DefeatZealotAgentRunaway(base_agent.BaseAgent):
                     y = random.randint(0, 83)
                     return FUNCTIONS.Effect_Blink_screen("now", (x, y))
                 else :
-                    return run(mean_stalker_x, mean_stalker_y, mean_zealot_x, mean_zealot_y)
+                    return self.run(mean_stalker_x, mean_stalker_y, mean_zealot_x, mean_zealot_y)
 
         if self.current_action == "run":
             # Run away from the zealots
             if unit_type_is_selected(obs, units.Protoss.Stalker):
-                return run(mean_stalker_x, mean_stalker_y, mean_zealot_x, mean_zealot_y)
+                return self.run(mean_stalker_x, mean_stalker_y, mean_zealot_x, mean_zealot_y)
 
         if self.current_action == "attack" :
             return attack(obs)
@@ -206,7 +280,7 @@ def main(unused_argv):
                 # specify how much action we want to do. 22.4 step per seconds
                 step_mul=1,
                 game_steps_per_episode=0,
-                visualize=True) as env:
+                visualize=False) as env:
             run_loop.run_loop([DefeatZealotAgentRunaway()], env)
     except KeyboardInterrupt:
         pass
