@@ -33,7 +33,7 @@ rule8 = ctrl.Rule(life['good'] & distance['average'], action['attack'])
 rule9 = ctrl.Rule(life['good'] & distance['good'], action['attack'])
 
 # Good thresholds (with smart running)
-LIMIT_FOR_ATTACK = 0.8
+LIMIT_FOR_ATTACK = 0.9
 LIMIT_FOR_RUN = 0.4
 
 
@@ -41,6 +41,40 @@ def string_action(score):
     if score > LIMIT_FOR_ATTACK : return "attack"
     if score > LIMIT_FOR_RUN : return "run"
     return "blink"
+
+#get the membership value of the fuzzy variable
+def mv_life(value):
+    inval = value
+    memb_list = []
+    for term in life.terms:
+      mval = np.interp(inval, life.universe, life[term].mf)
+      if mval>0:
+        memb_list.append([term,mval])
+
+    value_list = [val[1] for val in memb_list]
+
+    if 0.5 in value_list:
+        result = [val[0] for val in memb_list]
+    else:
+        result = [memb_list[np.argmax(value_list)][0]]
+    return result
+
+#get the membership value of the fuzzy variable
+def mv_distance(value):
+    inval = value
+    memb_list = []
+    for term in distance.terms:
+      mval = np.interp(inval, distance.universe, distance[term].mf)
+      if mval>0:
+        memb_list.append([term,mval])
+
+    value_list = [val[1] for val in memb_list]
+
+    if 0.5 in value_list:
+        result = [val[0] for val in memb_list]
+    else:
+        result = [memb_list[np.argmax(value_list)][0]]
+    return result
 
 # ---------------- STRACRAFT -----------------
 _PLAYER_SELF = features.PlayerRelative.SELF
@@ -95,10 +129,11 @@ def select_all_stalkers(stalkers):
 
 class DefeatZealotAgentRunaway(base_agent.BaseAgent):
 
-    def __init__(self):
+    def __init__(self, env):
         super(DefeatZealotAgentRunaway, self).__init__()
-        
+        self.env = env
         self.current_target = None
+        self.previous_action = None
         self.current_action = None
         self.action_ctrl = ctrl.ControlSystem([rule1, rule2, rule3, rule4, rule5, rule6, rule7, rule8, rule9])
         self.action_simulation = ctrl.ControlSystemSimulation(self.action_ctrl)
@@ -138,6 +173,30 @@ class DefeatZealotAgentRunaway(base_agent.BaseAgent):
 
         return string_action(score)
     
+    def explainable_msg(self, life, distance):
+        life_mval = mv_life(life)
+        dist_mval = mv_distance(distance)
+        
+        msg_life = ""
+        msg_dist = ""
+        
+        if len(life_mval)>1:
+            msg_life = "Life is "+life_mval[0]+" and "+life_mval[1]+","
+        else:
+            msg_life = "Life is "+life_mval[0]+","
+        
+        if len(dist_mval)>1:
+            msg_dist = " distance is "+dist_mval[0]+" and "+dist_mval[1]+","
+        else:
+            msg_dist = " distance is "+dist_mval[0]+","
+            
+        msg_action = " so : "+self.current_action+" !"
+        
+        final_msg = msg_life+msg_dist+msg_action
+        listMsgToSend = [final_msg]
+            
+        return listMsgToSend
+    
     def direction(self, x1, y1, x2, y2):
         weight = 10
         direction = [x1-x2, y1-y2]
@@ -162,7 +221,7 @@ class DefeatZealotAgentRunaway(base_agent.BaseAgent):
 
     def step(self, obs):
         super(DefeatZealotAgentRunaway, self).step(obs)
-        #sc2_env.ENVIRONMENT.send_chat_messages("hello")
+
         stalkers = get_units_by_type(obs, units.Protoss.Stalker)
         # stalker coordinates
         mean_stalker_x = np.mean([s.x for s in stalkers])
@@ -188,6 +247,16 @@ class DefeatZealotAgentRunaway(base_agent.BaseAgent):
                 avg_health /= len(stalkers)
 
             self.current_action = self.take_decision(life=avg_health, distance=distance)
+            if self.previous_action is None:
+                self.env.send_chat_messages(self.explainable_msg(avg_health, distance))
+                self.previous_action = self.current_action
+            else:
+                if self.previous_action != self.current_action:
+                    self.env.send_chat_messages(self.explainable_msg(avg_health, distance))
+                    self.previous_action = self.current_action
+                else:
+                    self.previous_action = self.current_action
+            
 
         # if stalkers are not selected :
         if not self.unit_type_is_selected(obs, units.Protoss.Stalker):
@@ -200,6 +269,7 @@ class DefeatZealotAgentRunaway(base_agent.BaseAgent):
                     y = random.randint(0, 83)
                     return FUNCTIONS.Effect_Blink_screen("now", (x, y))
                 else :
+                    self.current_action = "run"
                     return self.run(mean_stalker_x, mean_stalker_y, mean_zealot_x, mean_zealot_y)
 
         if self.current_action == "run":
@@ -215,7 +285,7 @@ class DefeatZealotAgentRunaway(base_agent.BaseAgent):
 
 def main(unused_argv):
     try:
-        ENVIRONMENT = sc2_env.SC2Env(
+        with sc2_env.SC2Env(
                 # Select a map
                 map_name="DefeatZealotswithBlink",
                 # Add players
@@ -228,8 +298,8 @@ def main(unused_argv):
                 # specify how much action we want to do. 22.4 step per seconds
                 step_mul=1,
                 game_steps_per_episode=0,
-                visualize=False)
-        run_loop.run_loop([DefeatZealotAgentRunaway()], ENVIRONMENT)
+                visualize=False) as env:
+          run_loop.run_loop([DefeatZealotAgentRunaway(env)], env)
         
     except KeyboardInterrupt:
         pass
