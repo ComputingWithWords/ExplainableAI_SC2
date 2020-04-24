@@ -54,9 +54,9 @@ def mv_life(value):
     value_list = [val[1] for val in memb_list]
 
     if 0.5 in value_list:
-        result = [val[0] for val in memb_list]
+        result = memb_list
     else:
-        result = [memb_list[np.argmax(value_list)][0]]
+        result = memb_list[np.argmax(value_list)]
     return result
 
 #get the membership value of the fuzzy variable
@@ -71,9 +71,9 @@ def mv_distance(value):
     value_list = [val[1] for val in memb_list]
 
     if 0.5 in value_list:
-        result = [val[0] for val in memb_list]
+        result = memb_list
     else:
-        result = [memb_list[np.argmax(value_list)][0]]
+        result = memb_list[np.argmax(value_list)]
     return result
 
 # ---------------- STRACRAFT -----------------
@@ -180,15 +180,15 @@ class DefeatZealotAgentRunaway(base_agent.BaseAgent):
         msg_life = ""
         msg_dist = ""
         
-        if len(life_mval)>1:
-            msg_life = "Life is "+life_mval[0]+" and "+life_mval[1]+","
+        if len(life_mval)>2:
+            msg_life = "Life is "+life_mval[0][0]+" ("+"{:1.2f}".format(life_mval[0][1])+") and "+ life_mval[1][0]+" ("+"{:1.2f}".format(life_mval[1][1])+"),"
         else:
-            msg_life = "Life is "+life_mval[0]+","
+            msg_life = "Life is "+life_mval[0]+" ("+"{:1.2f}".format(life_mval[1])+"),"
         
-        if len(dist_mval)>1:
-            msg_dist = " distance is "+dist_mval[0]+" and "+dist_mval[1]+","
+        if len(dist_mval)>2:
+            msg_dist = " distance is "+dist_mval[0][0]+" ("+"{:1.2f}".format(dist_mval[0][1])+") and "+ dist_mval[1][0]+" ("+"{:1.2f}".format(dist_mval[1][1])+"),"
         else:
-            msg_dist = " distance is "+dist_mval[0]+","
+            msg_dist = " distance is "+dist_mval[0]+" ("+"{:1.2f}".format(dist_mval[1])+"),"
             
         msg_action = " so : "+self.current_action+" !"
         
