@@ -8,13 +8,13 @@ import math
 from skfuzzy import control as ctrl
 import random
 
-UBUNTU_DEACTIVATE_CHAT = True
+UBUNTU_DEACTIVATE_CHAT = False
 # TODO : Find good weights
 # ------ WEIGHTS ----------
 LIMIT_FOR_ATTACK = 0.69
 LIMIT_FOR_RUN = 0.55
 ADJUST = False
-VISUALIZE = True
+VISUALIZE = False
 
 STALKER_SHIELD_WEIGHT = 1
 STALKER_HEALTH_WEIGHT = 1
@@ -100,17 +100,6 @@ ZEALOT_MAX_HEALTH = 150
 MAX_COORD = 84
 MIN_COORD = 0
 
-TOP_LEFT =[MIN_COORD,MIN_COORD]
-TOP_RIGHT=[MAX_COORD,MIN_COORD]
-BOTTOM_LEFT=[MIN_COORD,MAX_COORD]
-BOTTOM_RIGHT=[MAX_COORD,MAX_COORD]
-CORNERS = [TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT]
-
-_PLAYER_HOSTILE = 4
-
-_PLAYER_RELATIVE = features.SCREEN_FEATURES.player_relative.index
-_UNIT_TYPE = features.SCREEN_FEATURES.unit_type.index
-
 FUNCTIONS = actions.FUNCTIONS
 RAW_FUNCTIONS = actions.RAW_FUNCTIONS
 
@@ -149,24 +138,16 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
     def __init__(self, env):
         super(DefeatZealotAgentFuzzy, self).__init__()
         self.env = env
-        self.current_target = None
-        self.previous_action = None
-        self.current_action = None
+        self.current_target = [0,0]
+        self.previous_action = ""
+        self.current_action = ""
         self.action_ctrl = ctrl.ControlSystem([rule1, rule2, rule3, rule4, rule5, rule6, rule7, rule8, rule9])
         self.action_simulation = ctrl.ControlSystemSimulation(self.action_ctrl)
         self.adjust = ADJUST
         self.LIMIT_FOR_ATTACK = LIMIT_FOR_ATTACK
         self.LIMIT_FOR_RUN = LIMIT_FOR_RUN
 
-    def reset(self):
-        if self.adjust :
-            print("--- Adjusting limits ---")
-            n1 = random.random()
-            n2 = random.random()
-            print("attack:", n1+n2)
-            self.LIMIT_FOR_ATTACK = n1+n2
-            print("run:", n1)
-            self.LIMIT_FOR_RUN = n1
+
 
 
     def unit_type_is_selected(self, obs, unit_type):
@@ -183,6 +164,8 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
     def attack(self, obs) :
         if self.can_do(obs, FUNCTIONS.Attack_screen.id):
             zealots = get_units_by_type(obs, units.Protoss.Zealot)
+            if len(zealots)<=0:
+                return FUNCTIONS.no_op()
             lower_life_zealot = None
             lowest_health = ZEALOT_MAX_HEALTH
             for z in zealots:
@@ -197,7 +180,7 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
             if lowest_health == ZEALOT_MAX_HEALTH:
                 player_relative = obs.observation.feature_screen.player_relative
                 zealots = _xy_locs(player_relative == _PLAYER_ENEMY)
-                if not zealots:
+                if len(zealots)<= 0:
                     return FUNCTIONS.no_op()
 
                 # Find the zealot with highest y.
@@ -274,16 +257,21 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
 
     def step(self, obs):
         super(DefeatZealotAgentFuzzy, self).step(obs)
-
+        
+        player_relative = obs.observation.feature_screen.player_relative
         stalkers = get_units_by_type(obs, units.Protoss.Stalker)
+        if len(stalkers) <= 0:
+            return FUNCTIONS.no_op()
         # stalker coordinates
         mean_stalker_x = np.mean([s.x for s in stalkers])
         mean_stalker_y = np.mean([s.y for s in stalkers])
 
-        y, x = (obs.observation["feature_screen"][_PLAYER_RELATIVE] == _PLAYER_ENEMY).nonzero()
+        zealots = _xy_locs(player_relative == _PLAYER_ENEMY)
+        if len(zealots)<= 0:
+            return FUNCTIONS.no_op()
 
-        mean_zealot_x = x.mean()
-        mean_zealot_y = y.mean()
+        mean_zealot_x = np.mean([z[0] for z in zealots])
+        mean_zealot_y = np.mean([z[1] for z in zealots])
 
         if self.steps % 10 == 0:
             avg_health = 0
@@ -300,7 +288,7 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
             self.current_action = self.take_decision(life=avg_health, distance=distance, limit_run=self.LIMIT_FOR_RUN, limit_attack=self.LIMIT_FOR_ATTACK)
 
             if not UBUNTU_DEACTIVATE_CHAT :
-                if self.previous_action is None:
+                if self.previous_action == "":
                     self.env.send_chat_messages(self.explainable_msg(avg_health, distance))
                 else:
                     if self.previous_action != self.current_action:
@@ -348,7 +336,7 @@ def main(unused_argv):
                     use_feature_units=True),
                 # specify how much action we want to do. 22.4 step per seconds
                 step_mul=1,
-                game_steps_per_episode=3000,
+                game_steps_per_episode=0,
                 visualize=VISUALIZE) as env:
             run_loop.run_loop([DefeatZealotAgentFuzzy(env)], env)
 
