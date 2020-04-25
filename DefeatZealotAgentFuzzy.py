@@ -8,13 +8,28 @@ import math
 from skfuzzy import control as ctrl
 import random
 
-HP_OF_STALKER = 160 # use shields ? 80 hp + 80 shield
+UBUNTU_DEACTIVATE_CHAT = True
+# TODO : Find good weights
+# ------ WEIGHTS ----------
+LIMIT_FOR_ATTACK = 0.69
+LIMIT_FOR_RUN = 0.55
+ADJUST = False
+VISUALIZE = True
 
+STALKER_SHIELD_WEIGHT = 1
+STALKER_HEALTH_WEIGHT = 1
+
+
+# ----------- CONSTANTS FROM WEIGHTS --------------
+HP_OF_STALKER = 80 * STALKER_HEALTH_WEIGHT + 80 * STALKER_SHIELD_WEIGHT
+
+MAX_X = MAX_Y = 84
+MAX_DISTANCE = math.floor(math.sqrt(MAX_X*MAX_X+MAX_Y*MAX_Y))
 # ---------------- FUZZY -----------------
-distance = ctrl.Antecedent(np.arange(0,85,5), 'distance')
+distance = ctrl.Antecedent(np.arange(0,MAX_DISTANCE+1,1), 'distance')
 life = ctrl.Antecedent(np.arange(0,HP_OF_STALKER+1,1), 'life')
-action = ctrl.Consequent(np.arange(0,3,1), 'action')
 
+action = ctrl.Consequent(np.arange(0,3,1), 'action')
 action['blink'] = fuzz.trimf(action.universe, [0,0,0])
 action['run'] = fuzz.trimf(action.universe, [1,1,1])
 action['attack'] = fuzz.trimf(action.universe, [2,2,2])
@@ -32,12 +47,12 @@ rule7 = ctrl.Rule(life['good'] & distance['poor'], action['attack'])
 rule8 = ctrl.Rule(life['good'] & distance['average'], action['attack'])
 rule9 = ctrl.Rule(life['good'] & distance['good'], action['attack'])
 
-# Good thresholds (with smart running)
-LIMIT_FOR_ATTACK = 0.9
-LIMIT_FOR_RUN = 0.4
+
+def get_weighted_health_value(shield, health):
+    return health * STALKER_HEALTH_WEIGHT + shield * STALKER_SHIELD_WEIGHT
 
 
-def string_action(score):
+def string_action(score, LIMIT_FOR_ATTACK, LIMIT_FOR_RUN):
     if score > LIMIT_FOR_ATTACK : return "attack"
     if score > LIMIT_FOR_RUN : return "run"
     return "blink"
@@ -47,9 +62,9 @@ def mv_life(value):
     inval = value
     memb_list = []
     for term in life.terms:
-      mval = np.interp(inval, life.universe, life[term].mf)
-      if mval>0:
-        memb_list.append([term,mval])
+        mval = np.interp(inval, life.universe, life[term].mf)
+        if mval>0:
+            memb_list.append([term,mval])
 
     value_list = [val[1] for val in memb_list]
 
@@ -64,9 +79,9 @@ def mv_distance(value):
     inval = value
     memb_list = []
     for term in distance.terms:
-      mval = np.interp(inval, distance.universe, distance[term].mf)
-      if mval>0:
-        memb_list.append([term,mval])
+        mval = np.interp(inval, distance.universe, distance[term].mf)
+        if mval>0:
+            memb_list.append([term,mval])
 
     value_list = [val[1] for val in memb_list]
 
@@ -79,6 +94,8 @@ def mv_distance(value):
 # ---------------- STRACRAFT -----------------
 _PLAYER_SELF = features.PlayerRelative.SELF
 _PLAYER_ENEMY = features.PlayerRelative.ENEMY
+
+ZEALOT_MAX_HEALTH = 150
 
 MAX_COORD = 84
 MIN_COORD = 0
@@ -127,100 +144,136 @@ def select_all_stalkers(stalkers):
 
 
 
-class DefeatZealotAgentRunaway(base_agent.BaseAgent):
+class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
 
     def __init__(self, env):
-        super(DefeatZealotAgentRunaway, self).__init__()
+        super(DefeatZealotAgentFuzzy, self).__init__()
         self.env = env
         self.current_target = None
         self.previous_action = None
         self.current_action = None
         self.action_ctrl = ctrl.ControlSystem([rule1, rule2, rule3, rule4, rule5, rule6, rule7, rule8, rule9])
         self.action_simulation = ctrl.ControlSystemSimulation(self.action_ctrl)
-        
+        self.adjust = ADJUST
+        self.LIMIT_FOR_ATTACK = LIMIT_FOR_ATTACK
+        self.LIMIT_FOR_RUN = LIMIT_FOR_RUN
+
+    def reset(self):
+        if self.adjust :
+            print("--- Adjusting limits ---")
+            n1 = random.random()
+            n2 = random.random()
+            print("attack:", n1+n2)
+            self.LIMIT_FOR_ATTACK = n1+n2
+            print("run:", n1)
+            self.LIMIT_FOR_RUN = n1
+
+
     def unit_type_is_selected(self, obs, unit_type):
         if (len(obs.observation.single_select) > 0 and
                 obs.observation.single_select[0].unit_type == unit_type):
             return True
-    
+
         if (len(obs.observation.multi_select) > 0 and
                 obs.observation.multi_select[0].unit_type == unit_type):
             return True
-    
+
         return False
-    
+
     def attack(self, obs) :
         if self.can_do(obs, FUNCTIONS.Attack_screen.id):
-            player_relative = obs.observation.feature_screen.player_relative
-            zealots = _xy_locs(player_relative == _PLAYER_ENEMY)
-            if not zealots:
-                return FUNCTIONS.no_op()
-    
+            zealots = get_units_by_type(obs, units.Protoss.Zealot)
+            lower_life_zealot = None
+            lowest_health = ZEALOT_MAX_HEALTH
+            for z in zealots:
+                if lower_life_zealot is not None:
+                    lowest_health = lower_life_zealot.shield + lower_life_zealot.health
+                    zealot_health = z.shield + z.health
+                    if zealot_health < lowest_health :
+                        lower_life_zealot = z
+                else:
+                    lower_life_zealot = z
+
+            if lowest_health == ZEALOT_MAX_HEALTH:
+                player_relative = obs.observation.feature_screen.player_relative
+                zealots = _xy_locs(player_relative == _PLAYER_ENEMY)
+                if not zealots:
+                    return FUNCTIONS.no_op()
+
+                # Find the zealot with highest y.
+                target = zealots[np.argmax(np.array(zealots)[:, 1])]
+                return FUNCTIONS.Attack_screen("now", target)
+
             # Find the zealot with highest y.
-            target = zealots[np.argmax(np.array(zealots)[:, 1])]
+            target = (lower_life_zealot.x, lower_life_zealot.y)
+
             return FUNCTIONS.Attack_screen("now", target)
-    
+
     def can_do(self, obs, action):
         return action in obs.observation.available_actions
 
-    def take_decision(self, life, distance):
+    def take_decision(self, life, distance, limit_run, limit_attack):
         self.action_simulation.input['life'] = life
         self.action_simulation.input['distance'] = distance
 
         self.action_simulation.compute()
         score = self.action_simulation.output['action']
 
+        #action.view(sim=self.action_simulation)
 
-        return string_action(score)
-    
+        return string_action(score, LIMIT_FOR_RUN=limit_run, LIMIT_FOR_ATTACK=limit_attack)
+
     def explainable_msg(self, life, distance):
         life_mval = mv_life(life)
         dist_mval = mv_distance(distance)
-        
+
         msg_life = ""
         msg_dist = ""
-        
+
         if len(life_mval)>2:
             msg_life = "Life is "+life_mval[0][0]+" ("+"{:1.2f}".format(life_mval[0][1])+") and "+ life_mval[1][0]+" ("+"{:1.2f}".format(life_mval[1][1])+"),"
         else:
             msg_life = "Life is "+life_mval[0]+" ("+"{:1.2f}".format(life_mval[1])+"),"
-        
+
         if len(dist_mval)>2:
             msg_dist = " distance is "+dist_mval[0][0]+" ("+"{:1.2f}".format(dist_mval[0][1])+") and "+ dist_mval[1][0]+" ("+"{:1.2f}".format(dist_mval[1][1])+"),"
         else:
             msg_dist = " distance is "+dist_mval[0]+" ("+"{:1.2f}".format(dist_mval[1])+"),"
-            
+
         msg_action = " so : "+self.current_action+" !"
-        
+
         final_msg = msg_life+msg_dist+msg_action
         listMsgToSend = [final_msg]
-            
+
         return listMsgToSend
-    
+
     def direction(self, x1, y1, x2, y2):
         weight = 10
         direction = [x1-x2, y1-y2]
         normalizer = 1/math.sqrt(math.pow(x1-x2,2)+math.pow(y1-y2,2))
         norm_direct = [direction[i] * weight * normalizer for i in [0,1]]
         return norm_direct
-    
-    def run(self, stalkerX, stalkerY, zealotX, zealotY):
+
+    def run(self, stalkerX, stalkerY, zealotX, zealotY, obs):
         vect_dir = self.direction(stalkerX, stalkerY, zealotX, zealotY)
-          
+
         if(stalkerX<(MAX_COORD/4) or stalkerX>(MAX_COORD/4)*3 or stalkerY<(MAX_COORD/4) or stalkerY>45):
             if(zealotY>MAX_COORD/2 and (stalkerY<zealotY and stalkerX<(MAX_COORD/4)*3)):
                 target = [stalkerX+((vect_dir[0]-vect_dir[1])/2),stalkerY+((vect_dir[1]+vect_dir[0])/2)]
             else:
-                target = [stalkerX+((vect_dir[0]+vect_dir[1])/2),stalkerY+((vect_dir[1]-vect_dir[0])/2)]         
+                target = [stalkerX+((vect_dir[0]+vect_dir[1])/2),stalkerY+((vect_dir[1]-vect_dir[0])/2)]
         else:
             target = [stalkerX+vect_dir[0], stalkerY+vect_dir[1]]
-          
+
         target[0] = verify_coord(target[0])
         target[1] = verify_coord(target[1])
-        return FUNCTIONS.Move_screen("now", target)
+        if self.can_do(obs, FUNCTIONS.Move_screen.id):
+            return FUNCTIONS.Move_screen("now", target)
+        else:
+            return FUNCTIONS.no_op()
 
     def step(self, obs):
-        super(DefeatZealotAgentRunaway, self).step(obs)
+        super(DefeatZealotAgentFuzzy, self).step(obs)
 
         stalkers = get_units_by_type(obs, units.Protoss.Stalker)
         # stalker coordinates
@@ -232,31 +285,29 @@ class DefeatZealotAgentRunaway(base_agent.BaseAgent):
         mean_zealot_x = x.mean()
         mean_zealot_y = y.mean()
 
-        if self.steps % 20 == 0:
-            print("-------------------------")
+        if self.steps % 10 == 0:
             avg_health = 0
-            #stalker = (mean_stalker_x,mean_stalker_y)
-            #zealot = (mean_zealot_x,mean_zealot_y)
+
             distance = math.sqrt(math.pow(mean_stalker_y-mean_zealot_y,2) + math.pow(mean_stalker_x-mean_zealot_x,2) )
 
             # TODO : different weight for hp or shield ???
             # Move each stalker individually ?
             for s in stalkers:
-                avg_health += (s.shield + s.health)
+                avg_health += get_weighted_health_value(s.shield,s.health)
             if len(stalkers) != 0:
                 avg_health /= len(stalkers)
 
-            self.current_action = self.take_decision(life=avg_health, distance=distance)
-            if self.previous_action is None:
-                self.env.send_chat_messages(self.explainable_msg(avg_health, distance))
-                self.previous_action = self.current_action
-            else:
-                if self.previous_action != self.current_action:
+            self.current_action = self.take_decision(life=avg_health, distance=distance, limit_run=self.LIMIT_FOR_RUN, limit_attack=self.LIMIT_FOR_ATTACK)
+
+            if not UBUNTU_DEACTIVATE_CHAT :
+                if self.previous_action is None:
                     self.env.send_chat_messages(self.explainable_msg(avg_health, distance))
-                    self.previous_action = self.current_action
                 else:
-                    self.previous_action = self.current_action
-            
+                    if self.previous_action != self.current_action:
+                        self.env.send_chat_messages(self.explainable_msg(avg_health, distance))
+
+            self.previous_action = self.current_action
+
 
         # if stalkers are not selected :
         if not self.unit_type_is_selected(obs, units.Protoss.Stalker):
@@ -270,12 +321,12 @@ class DefeatZealotAgentRunaway(base_agent.BaseAgent):
                     return FUNCTIONS.Effect_Blink_screen("now", (x, y))
                 else :
                     self.current_action = "run"
-                    return self.run(mean_stalker_x, mean_stalker_y, mean_zealot_x, mean_zealot_y)
+                    return self.run(mean_stalker_x, mean_stalker_y, mean_zealot_x, mean_zealot_y, obs)
 
         if self.current_action == "run":
             # Run away from the zealots
             if self.unit_type_is_selected(obs, units.Protoss.Stalker):
-                return self.run(mean_stalker_x, mean_stalker_y, mean_zealot_x, mean_zealot_y)
+                return self.run(mean_stalker_x, mean_stalker_y, mean_zealot_x, mean_zealot_y, obs)
 
         if self.current_action == "attack" :
             return self.attack(obs)
@@ -297,10 +348,10 @@ def main(unused_argv):
                     use_feature_units=True),
                 # specify how much action we want to do. 22.4 step per seconds
                 step_mul=1,
-                game_steps_per_episode=0,
-                visualize=False) as env:
-          run_loop.run_loop([DefeatZealotAgentRunaway(env)], env)
-        
+                game_steps_per_episode=3000,
+                visualize=VISUALIZE) as env:
+            run_loop.run_loop([DefeatZealotAgentFuzzy(env)], env)
+
     except KeyboardInterrupt:
         pass
 
