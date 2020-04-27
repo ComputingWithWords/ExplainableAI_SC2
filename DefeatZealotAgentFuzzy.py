@@ -9,12 +9,13 @@ from skfuzzy import control as ctrl
 import random
 
 UBUNTU_DEACTIVATE_CHAT = False
-# TODO : Find good weights
+MAX_EPISODES = 20
+
 # ------ WEIGHTS ----------
 LIMIT_FOR_ATTACK = 0.69
 LIMIT_FOR_RUN = 0.55
 ADJUST = False
-VISUALIZE = False
+VISUALIZE = True
 
 STALKER_SHIELD_WEIGHT = 1
 STALKER_HEALTH_WEIGHT = 1
@@ -128,9 +129,7 @@ def get_units_by_type(obs, unit_type):
 
 def select_all_stalkers(stalkers):
     stalker = random.choice(stalkers)
-    return actions.FUNCTIONS.select_point("select_all_type", (stalker.x,stalker.y))
-
-
+    return actions.FUNCTIONS.select_point("select_all_type", (stalker.x, stalker.y))
 
 
 class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
@@ -146,9 +145,6 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
         self.adjust = ADJUST
         self.LIMIT_FOR_ATTACK = LIMIT_FOR_ATTACK
         self.LIMIT_FOR_RUN = LIMIT_FOR_RUN
-
-
-
 
     def unit_type_is_selected(self, obs, unit_type):
         if (len(obs.observation.single_select) > 0 and
@@ -191,6 +187,8 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
             target = (lower_life_zealot.x, lower_life_zealot.y)
 
             return FUNCTIONS.Attack_screen("now", target)
+        else:
+            return FUNCTIONS.no_op()
 
     def can_do(self, obs, action):
         return action in obs.observation.available_actions
@@ -257,7 +255,7 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
 
     def step(self, obs):
         super(DefeatZealotAgentFuzzy, self).step(obs)
-        
+
         player_relative = obs.observation.feature_screen.player_relative
         stalkers = get_units_by_type(obs, units.Protoss.Stalker)
         if len(stalkers) <= 0:
@@ -278,8 +276,7 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
 
             distance = math.sqrt(math.pow(mean_stalker_y-mean_zealot_y,2) + math.pow(mean_stalker_x-mean_zealot_x,2) )
 
-            # TODO : different weight for hp or shield ???
-            # Move each stalker individually ?
+            # TODO : Move each stalker individually ?
             for s in stalkers:
                 avg_health += get_weighted_health_value(s.shield,s.health)
             if len(stalkers) != 0:
@@ -295,7 +292,6 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
                         self.env.send_chat_messages(self.explainable_msg(avg_health, distance))
 
             self.previous_action = self.current_action
-
 
         # if stalkers are not selected :
         if not self.unit_type_is_selected(obs, units.Protoss.Stalker):
@@ -323,6 +319,7 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
 
 
 def main(unused_argv):
+
     try:
         with sc2_env.SC2Env(
                 # Select a map
@@ -336,9 +333,11 @@ def main(unused_argv):
                     use_feature_units=True),
                 # specify how much action we want to do. 22.4 step per seconds
                 step_mul=1,
-                game_steps_per_episode=0,
+                game_steps_per_episode=1920,
                 visualize=VISUALIZE) as env:
-            run_loop.run_loop([DefeatZealotAgentFuzzy(env)], env)
+            agent = DefeatZealotAgentFuzzy(env)
+
+            run_loop.run_loop([DefeatZealotAgentFuzzy(env)], env, max_episodes=MAX_EPISODES)
 
     except KeyboardInterrupt:
         pass
