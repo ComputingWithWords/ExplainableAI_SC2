@@ -9,13 +9,13 @@ from skfuzzy import control as ctrl
 import random
 
 UBUNTU_DEACTIVATE_CHAT = False
-MAX_EPISODES = 20
-
+PLAY_EPISODES = 3
+WATCHING_EPISODES = 2
 # ------ WEIGHTS ----------
 LIMIT_FOR_ATTACK = 0.69
 LIMIT_FOR_RUN = 0.55
 ADJUST = False
-VISUALIZE = True
+VISUALIZE = False
 
 STALKER_SHIELD_WEIGHT = 1
 STALKER_HEALTH_WEIGHT = 1
@@ -319,7 +319,6 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
 
 
 def main(unused_argv):
-
     try:
         with sc2_env.SC2Env(
                 # Select a map
@@ -332,12 +331,13 @@ def main(unused_argv):
                                                            minimap=64),
                     use_feature_units=True),
                 # specify how much action we want to do. 22.4 step per seconds
-                step_mul=1,
+                step_mul=2,
                 game_steps_per_episode=1920,
                 visualize=VISUALIZE) as env:
-            agent = DefeatZealotAgentFuzzy(env)
 
-            run_loop.run_loop([DefeatZealotAgentFuzzy(env)], env, max_episodes=MAX_EPISODES)
+            run_loop.run_loop([], env, max_episodes=PLAY_EPISODES)
+            run_loop.run_loop([DefeatZealotAgentFuzzy(env)], env, max_episodes=WATCHING_EPISODES)
+            run_loop.run_loop([], env, max_episodes=PLAY_EPISODES)
 
     except KeyboardInterrupt:
         pass
