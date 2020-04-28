@@ -7,6 +7,7 @@ import numpy as np
 import math
 from skfuzzy import control as ctrl
 import random
+import matplotlib.pyplot as plt
 
 UBUNTU_DEACTIVATE_CHAT = False
 PLAY_EPISODES = 3
@@ -32,7 +33,7 @@ life = ctrl.Antecedent(np.arange(0,HP_OF_STALKER+1,1), 'life')
 
 action = ctrl.Consequent(np.arange(0,3,1), 'action')
 action['blink'] = fuzz.trimf(action.universe, [0,0,0])
-action['run'] = fuzz.trimf(action.universe, [1,1,1])
+action['run'] = fuzz.trimf(action.universe, [0,0.25,0.5])
 action['attack'] = fuzz.trimf(action.universe, [2,2,2])
 
 distance.automf(3)
@@ -67,12 +68,14 @@ def mv_life(value):
         if mval>0:
             memb_list.append([term,mval])
 
-    value_list = [val[1] for val in memb_list]
+    #value_list = [val[1] for val in memb_list]
 
-    if 0.5 in value_list:
-        result = memb_list
-    else:
-        result = memb_list[np.argmax(value_list)]
+    #if 0.5 in value_list:
+    result = memb_list
+    #else:
+     #   result = memb_list[np.argmax(value_list)]
+    if(len(result)>1 and result[0][1]<result[1][1]):
+        result[0], result[1] = result[1], result[0]
     return result
 
 #get the membership value of the fuzzy variable
@@ -84,12 +87,14 @@ def mv_distance(value):
         if mval>0:
             memb_list.append([term,mval])
 
-    value_list = [val[1] for val in memb_list]
+    #value_list = [val[1] for val in memb_list]
 
-    if 0.5 in value_list:
-        result = memb_list
-    else:
-        result = memb_list[np.argmax(value_list)]
+    #if 0.5 in value_list:
+    result = memb_list
+    #else:
+    #    result = memb_list[np.argmax(value_list)]
+    if(len(result)>1 and result[0][1]<result[1][1]):
+        result[0], result[1] = result[1], result[0]
     return result
 
 # ---------------- STRACRAFT -----------------
@@ -137,6 +142,7 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
     def __init__(self, env):
         super(DefeatZealotAgentFuzzy, self).__init__()
         self.env = env
+        
         self.current_target = [0,0]
         self.previous_action = ""
         self.current_action = ""
@@ -200,31 +206,38 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
         self.action_simulation.compute()
         score = self.action_simulation.output['action']
 
-        #action.view(sim=self.action_simulation)
-
         return string_action(score, LIMIT_FOR_RUN=limit_run, LIMIT_FOR_ATTACK=limit_attack)
 
     def explainable_msg(self, life, distance):
         life_mval = mv_life(life)
         dist_mval = mv_distance(distance)
 
-        msg_life = ""
-        msg_dist = ""
-
-        if len(life_mval)>2:
-            msg_life = "Life is "+life_mval[0][0]+" ("+"{:1.2f}".format(life_mval[0][1])+") and "+ life_mval[1][0]+" ("+"{:1.2f}".format(life_mval[1][1])+"),"
+        msg_action = self.current_action.capitalize()+", because : "
+        
+        if len(life_mval)>1:
+            msg_life = "life is "
+            msg_life += str(life_mval[0][0])+" ("+"{:.0%}".format(life_mval[0][1])+")"
+            msg_life +=" and "
+            msg_life +=str(life_mval[1][0])+" ("+"{:.0%}".format(life_mval[1][1])+")"
+            msg_life +=","
         else:
-            msg_life = "Life is "+life_mval[0]+" ("+"{:1.2f}".format(life_mval[1])+"),"
+            msg_life = "life is "
+            msg_life +=str(life_mval[0][0])+" ("+"{:.0%}".format(life_mval[0][1])+"),"
 
-        if len(dist_mval)>2:
-            msg_dist = " distance is "+dist_mval[0][0]+" ("+"{:1.2f}".format(dist_mval[0][1])+") and "+ dist_mval[1][0]+" ("+"{:1.2f}".format(dist_mval[1][1])+"),"
+        if len(dist_mval)>1:
+            msg_dist = "distance is "
+            msg_dist +=str(dist_mval[0][0])+" ("+"{:.0%}".format(dist_mval[0][1])+")"
+            msg_dist +=" and "
+            msg_dist +=str(dist_mval[1][0])+" ("+"{:.0%}".format(dist_mval[1][1])+")."
         else:
-            msg_dist = " distance is "+dist_mval[0]+" ("+"{:1.2f}".format(dist_mval[1])+"),"
+            msg_dist = "distance is "
+            msg_dist +=str(dist_mval[0][0])+" ("+"{:.0%}".format(dist_mval[0][1])+")."
 
-        msg_action = " so : "+self.current_action+" !"
+        
 
-        final_msg = msg_life+msg_dist+msg_action
-        listMsgToSend = [final_msg]
+        final_msg = msg_action+msg_life+msg_dist
+        print(final_msg)
+        listMsgToSend = [msg_action, msg_life, msg_dist,".",".",".",".",".","."]
 
         return listMsgToSend
 
@@ -286,10 +299,22 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
 
             if not UBUNTU_DEACTIVATE_CHAT :
                 if self.previous_action == "":
-                    self.env.send_chat_messages(self.explainable_msg(avg_health, distance))
+                    listMsgs = self.explainable_msg(avg_health, distance)
+                    for msg in listMsgs:
+                        self.env.send_chat_messages([msg])
+                    #action.view(sim=self.action_simulation)
+                    #plt.show()
+                    input("Press Enter to continue...")
+                        
                 else:
                     if self.previous_action != self.current_action:
-                        self.env.send_chat_messages(self.explainable_msg(avg_health, distance))
+                        listMsgs = self.explainable_msg(avg_health, distance)
+                        for msg in listMsgs:
+                            self.env.send_chat_messages([msg])
+                        #action.view(sim=self.action_simulation)
+                        #plt.show()
+                        input("Press Enter to continue...")
+                            
 
             self.previous_action = self.current_action
 
@@ -331,13 +356,13 @@ def main(unused_argv):
                                                            minimap=64),
                     use_feature_units=True),
                 # specify how much action we want to do. 22.4 step per seconds
-                step_mul=2,
+                step_mul=1,
                 game_steps_per_episode=1920,
                 visualize=VISUALIZE) as env:
 
-            run_loop.run_loop([], env, max_episodes=PLAY_EPISODES)
+            #run_loop.run_loop([], env, max_episodes=PLAY_EPISODES)
             run_loop.run_loop([DefeatZealotAgentFuzzy(env)], env, max_episodes=WATCHING_EPISODES)
-            run_loop.run_loop([], env, max_episodes=PLAY_EPISODES)
+            #run_loop.run_loop([], env, max_episodes=PLAY_EPISODES)
 
     except KeyboardInterrupt:
         pass
