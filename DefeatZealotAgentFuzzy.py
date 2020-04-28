@@ -10,8 +10,8 @@ import random
 import matplotlib.pyplot as plt
 
 UBUNTU_DEACTIVATE_CHAT = False
-PLAY_EPISODES = 3
-WATCHING_EPISODES = 2
+PLAY_EPISODES = 1
+WATCHING_EPISODES = 1
 # ------ WEIGHTS ----------
 LIMIT_FOR_ATTACK = 0.69
 LIMIT_FOR_RUN = 0.55
@@ -33,7 +33,7 @@ life = ctrl.Antecedent(np.arange(0,HP_OF_STALKER+1,1), 'life')
 
 action = ctrl.Consequent(np.arange(0,3,1), 'action')
 action['blink'] = fuzz.trimf(action.universe, [0,0,0])
-action['run'] = fuzz.trimf(action.universe, [0,0.25,0.5])
+action['run'] = fuzz.trimf(action.universe, [1,1,1])
 action['attack'] = fuzz.trimf(action.universe, [2,2,2])
 
 distance.automf(3)
@@ -142,7 +142,6 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
     def __init__(self, env):
         super(DefeatZealotAgentFuzzy, self).__init__()
         self.env = env
-        
         self.current_target = [0,0]
         self.previous_action = ""
         self.current_action = ""
@@ -151,6 +150,12 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
         self.adjust = ADJUST
         self.LIMIT_FOR_ATTACK = LIMIT_FOR_ATTACK
         self.LIMIT_FOR_RUN = LIMIT_FOR_RUN
+        if not UBUNTU_DEACTIVATE_CHAT : 
+            greetingMsg = "Hello! I am an explainable artificial intelligence"
+            greetingMsg +=" based on fuzzy logic and I will explain you"
+            greetingMsg +=" how I play this game :-)"
+            self.env.send_chat_messages([greetingMsg])
+            input("Press Enter to continue...")
 
     def unit_type_is_selected(self, obs, unit_type):
         if (len(obs.observation.single_select) > 0 and
@@ -212,7 +217,7 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
         life_mval = mv_life(life)
         dist_mval = mv_distance(distance)
 
-        msg_action = self.current_action.capitalize()+", because : "
+        msg_action = "I choose to "+self.current_action+", because : "
         
         if len(life_mval)>1:
             msg_life = "life is "
