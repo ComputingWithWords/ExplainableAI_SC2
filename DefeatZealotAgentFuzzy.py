@@ -184,6 +184,7 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
     def __init__(self, env):
         super(DefeatZealotAgentFuzzy, self).__init__()
         self.env = env
+        self.first = True
         self.current_target = [0, 0]
         self.previous_action = ""
         self.current_action = ""
@@ -192,12 +193,7 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
         self.adjust = ADJUST
         self.LIMIT_FOR_ATTACK = LIMIT_FOR_ATTACK
         self.LIMIT_FOR_RUN = LIMIT_FOR_RUN
-        if not UBUNTU_DEACTIVATE_CHAT:
-            greetingMsg = "Hello! I am an explainable artificial intelligence"
-            greetingMsg += " based on fuzzy logic and I will explain you"
-            greetingMsg += " how I play this game :-)"
-            self.env.send_chat_messages([greetingMsg])
-            input("Press Enter to continue...")
+
 
     def unit_type_is_selected(self, obs, unit_type):
         if (len(obs.observation.single_select) > 0 and
@@ -314,7 +310,13 @@ class DefeatZealotAgentFuzzy(base_agent.BaseAgent):
 
     def step(self, obs):
         super(DefeatZealotAgentFuzzy, self).step(obs)
-
+        if not UBUNTU_DEACTIVATE_CHAT and self.first:
+            self.first = False
+            greetingMsg = "Hello! I am an explainable artificial intelligence"
+            greetingMsg += " based on fuzzy logic and I will explain you"
+            greetingMsg += " how I play this game :-)"
+            self.env.send_chat_messages([greetingMsg])
+            input("Press Enter to continue...")
         player_relative = obs.observation.feature_screen.player_relative
         stalkers = get_units_by_type(obs, units.Protoss.Stalker)
         if len(stalkers) <= 0:
